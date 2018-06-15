@@ -53,6 +53,40 @@
 	}
 
 	var lastTimeoutID = null;
+	/**
+    * This is a function that takes in a list of found pages/blog posts and the searched term, and builds the display for the 
+    * search page that we display upon submitting a term.  It is a helper function for the buildPage plugin method.
+    * @param param is a list of blog objects that are a match for our search term
+    * @param term is the term we have searched for
+    */
+  	function buildSearchPage(param, term){
+	    $('#searchFor').text(`Search for: ${term}`);
+	    $('#search-info').text(`Number of Results Returned: ${param.length}`);
+	    $('#results').empty();
+	    for(var i = 0; i < param.length; i++){
+	      var tags = param[i].tags;
+	      var text = param[i].plaintext;
+	      var page_preview = '';
+	      var text_index = text.indexOf(term);
+	      if(text_index === -1 && tags.length === 0) page_preview = "Preview information unavailable for site pages.", text='';
+	      if(text_index === -1 && tags.length > 0) text_index = 0;
+	      text = text.slice(text_index, text_index + 100);
+	      if(!page_preview) text += "...";
+	      var pageInfo = "Blog Post | ";
+	      if (tags.length === 0) tags = "Site Page",pageInfo='';
+	      $('#searched-for').append(`<div class="search-${i % 2}">
+	                                <div>
+	                                  <a href="${param[i].link}"><h5>${param[i].title}</h5>
+	                                </div>
+	                                </a>
+	                                <p id="preview">${page_preview + text}</p>
+	                                <h4>${pageInfo + tags} | ${param[i].pubDate}</h4></div>`
+	                              );
+	    //    if(!pageInfo){
+	    //   $('#preview').load(param[i].link + ' #scrolldown-target p');
+	    // }
+	    }
+	  }
 
 	// We add a prefix to new IDs and remove it after a set of
 	// updates is complete, just in case a browser freaks over
@@ -400,7 +434,121 @@
 				var r = d[b];
 				return typeof r === 'string' || typeof r === 'number' ? r : a;
 			});
-		}
+		},
+		buildPage   : function(value){
+	      //console.log("In buildPage");
+	      grabAndIndex.call(this);
+	      clearTimeout(lastTimeoutID);
+	      if (!value) {
+	        value = "";
+	      };
+	      value = value.toLowerCase();
+	      lastTimeoutID = setTimeout(function() {
+	        // Query strategy is lifted from comments on a lunr.js issue: https://github.com/olivernn/lunr.js/issues/256
+	        var thingsFound = [];
+	        // The query interface expects single terms, so we split.
+	        var valueSplit = value.split(/\s+/);
+	        for (var i=0,ilen=valueSplit.length;i<ilen;i++) {
+	          // Fetch a list of matches for each term.
+	          var v = valueSplit[i];
+	          if (!v) continue;
+	          thingsFound.push(this.index.query(function (q) {
+	            // For an explanation of lunr indexing options, see the lunr.js
+	            // documentation at https://lunrjs.com/docs/lunr.Query.html#~Clause
+
+	            // look for an exact match and apply a large positive boost
+	            q.term(v, {
+	              usePipeline: true,
+	              boost: 100,
+	            });
+	            // look for terms that match the beginning of this queryTerm and apply a medium boost
+	            q.term(v, {
+	              usePipeline: false,
+	              boost: 10,
+	              wildcard: lunr.Query.wildcard.TRAILING
+	            });
+	            // look for terms that match with an edit distance of 1 and apply a small boost
+	            q.term(v, {
+	              usePipeline: false,
+	              editDistance: 1,
+	              boost: 1
+	            });
+	          }));
+	        }
+	        var searchResult;
+	        if (thingsFound.length > 1) {
+	          // If we had multiple terms, we'll have multiple lists. We filter
+	          // them here to use only items that produce returns for all
+	          // terms. This spoofs an AND join between terms, which lunr.js can't
+	          // yet do internally.
+	          // By using the first list of items as master, we get weightings
+	          // based on the first term entered, which is more or less
+	          // what we would expect.
+	          var searchResult = thingsFound[0];
+	          thingsFound = thingsFound.slice(1);
+	          for (var i=searchResult.length-1;i>-1;i--) {
+	            var ref = searchResult[i].ref;
+	            for (j=0,jlen=thingsFound.length;j<jlen;j++) {
+	              var otherRefs = {}
+	              for (var k=0,klen=thingsFound[j].length;k<klen;k++) {
+	                otherRefs[thingsFound[j][k].ref] = true;
+	              }
+	              if (!otherRefs[ref]) {
+	                searchResult = searchResult.slice(0, i).concat(searchResult.slice(i+1));
+	                break;
+	              }
+	            }
+	          }
+	        } else if (thingsFound.length === 1) {
+	          // If we had just one term and one list, return that.
+	          searchResult = thingsFound[0];
+	        } else {
+	          // If there was no search result, return an empty list.
+	          searchResult = [];
+	        }
+	        //console.log("Search Result: " + searchResult);
+
+	        var results     = $(this.results);
+	        var resultsData   = [];
+
+	        if(this.before) {
+	          this.before();
+	        };
+
+	        // Get the blogData for the full set, for onComplete
+	        //console.log(this.blogData[searchResult[0].ref]);
+	        for (var i = 0; i < searchResult.length; i++) {
+	          var lunrref   = searchResult[i].ref;
+	          var postData    = this.blogData[lunrref];
+	          if (postData) {
+	            postData.ref = lunrref;
+	            resultsData.push(postData);
+	          } else {
+	            console.warn("ghostHunter: index/data mismatch. Ouch.");
+	          }
+	        }
+	        // Get an array of IDs present in current results
+	        var listItems = $('.gh-search-item');
+	        var currentRefs = listItems
+	          .map(function(){
+	            return this.id.slice(3);
+	          }).get();
+	        if (currentRefs.length === 0) {
+	          for (var i=0,ilen=resultsData.length;i<ilen;i++) {
+	            //console.log(resultsData[i].link);
+	            results.append(this.format(this.result_template,resultsData[i]));
+	          }
+	          settleIDs();
+	        } 
+	        // Tidy up
+	        if(this.onComplete) {
+	          this.onComplete(resultsData);
+	        };
+	        buildSearchPage(resultsData, value);
+	        //console.log("Data: " + resultsData[0].link); 
+	        //return resultsData[0].link;       
+	      }.bind(this), 100);
+	    }
 	}
 
 })( jQuery );
