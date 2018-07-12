@@ -3,7 +3,7 @@
 
 # ghostHunter
 
-**Original developer:** [jamal@i11u.me](mailto:jamal@i11u.me)
+**Original developer:** [jamal@i11u.me](mailto:jamal@i11u.me)<br>
 **Modifying developer:** [Nathan Brophy](mailto:nbrophy@mavericksoftware.com)
 
 GhostHunter makes it easy to add search capability to any Ghost theme, using the [Ghost API](https://api.ghost.org/v1.14.0/docs) and the [lunr.js](https://lunrjs.com) search engine. Indexing and search are done client-side (in the browser). This has several advantages:
